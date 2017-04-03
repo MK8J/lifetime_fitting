@@ -1,0 +1,7 @@
+
+
+Daq_Channels_Number: 3
+channel_names: [gen, pc, pl]
+
+preamp_type: human #choice of human and femto
+preamp_channels: [gen, pl]

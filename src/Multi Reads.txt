@@ -1,0 +1,53 @@
+
+From DaleFlow, a member of the NI Developer Zone, 6/24/2008:
+
+
+Solution for the Python people here. ..as support is a bit vague to non-existent :smileymad:
+ 
+Nidaq  with USB 6008
+Reading more that 1 channel with the NIDAQ library in Python was a problem as the docs are really bad. Anyway I found a solution to do muli channel reads
+My example  is with 3 channels so it could be easily adapted for more. 
+ 
+I kept the max_num_samples deliberately small to see what was happening :-) so scale up
+ 
+Enjoy  :smileyhappy:
+ 
+ 
+ 
+        # initialize variables
+        taskHandle = TaskHandle(0)
+        max_num_samples =9
+        data = numpy.zeros((max_num_samples,),dtype=numpy.float64)   
+        # now, on with the program
+        CHK(nidaq.DAQmxCreateTask("",ctypes.byref(taskHandle)))
+        CHK(nidaq.DAQmxCreateAIVoltageChan(taskHandle,"Dev1/ai0:2","",          
+                                           DAQmx_Val_Diff,            #DAQmx_Val_Diff,   #DAQmx_Val_RSE,       #DAQmx_Val_Cfg_Default,
+                                           float64(-10.0),float64(10.0),
+                                           DAQmx_Val_Volts,
+                                           None))
+       
+               
+        CHK(nidaq.DAQmxCfgSampClkTiming(taskHandle,"",float64(1000.0), DAQmx_Val_Rising,DAQmx_Val_FiniteSamps,uInt64(max_num_samples)))
+                  #DAQmxCfgSampClkTiming(taskHandle,"",sampleRate,DAQmx_Val_Rising,DAQmx_Val_FiniteSamps,sampsPerChan);      
+        CHK(nidaq.DAQmxStartTask(taskHandle))
+        read = int32()
+       
+        CHK(nidaq.DAQmxReadAnalogF64(taskHandle,
+                                     -1,
+                                     float64(1.0),    #Timeout in seconds
+                                     DAQmx_Val_GroupByScanNumber,       #DAQmx_Val_GroupByChannel,    #DAQmx_Val_GroupByScanNumber
+                                     data.ctypes.data,
+                                     max_num_samples,
+                                     ctypes.byref(read),None))
+       
+       
+        print "Acquired %d points"%(read.value)
+       
+        if taskHandle.value != 0:
+            nidaq.DAQmxStopTask(taskHandle)
+            nidaq.DAQmxClearTask(taskHandle)
+       
+        return data
+	
+1
+Kudos! Thanks!
