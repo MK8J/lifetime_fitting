@@ -4,99 +4,139 @@ import collections
 import numpy as np
 from PyQt5.QtWidgets import (QWidget, QFileDialog, QPushButton, QTextEdit,
                              QGridLayout, QApplication, QLabel, QComboBox,
-                             QCheckBox, QLineEdit, QStatusBar, QMainWindow, QSizePolicy)
+                             QCheckBox, QLineEdit, QStatusBar, QMainWindow, QSizePolicy, QTabWidget)
 
 from PyQt5.QtCore import pyqtSignal, QTimer
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+# from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as
+# FigureCanvas
 
-from lifetime_calc import lifetime, SRH_params, sample
-import matplotlib.pyplot as plt
-from matplotlib.figure import Figure
+from calculations.lifetime import lifetime, SRH_recombiation, sample, surface_recombaition
+from loader import loader
+# import matplotlib.pyplot as plt
+# from matplotlib.figure import Figure
+import pyqtgraph as pg
+
+from pyqtgraph import QtGui
 
 
-class MyMplCanvas(FigureCanvas):
+class CustomViewBox(pg.ViewBox):
+
+    def __init__(self, parent=None):
+        """
+        Constructor of the CustomViewBox
+        """
+        super().__init__(parent)
+        # print(self.__dict__.keys())
+
+        # print(self.__dict__.keys(), '\n\n')
+        #
+        # print(self.__dict__['menu'].__dict__.keys())
+        # print(self.__dict__['menu']['leftMenu'])
+        # self._viewbox.fftCheck.setObjectName("fftCheck")
+
+        # self.viewAll = QtGui.QRadioButton("Vue d\'ensemble")
+        # self.viewAll.triggered.connect(self.autoRange)
+        # self.menu.addAction(self.viewAll)
+        # print(self.menu.__dict__['leftMenu'].__dict__)
+
+
+class plotwidget(pg.PlotWidget):
     """Ultimately, this is a QWidget (as well as a FigureCanvasAgg, etc.)."""
 
-    def __init__(self, parent=None, width=5, height=4, dpi=100):
+    plot_type = 'lifetime'
 
-        fig = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = fig.add_subplot(111)
-        self.compute_initial_figure()
-        # We want the axes cleared every time plot() is called
-        # self.axes.hold(False)
+    def __init__(self, parent=None):
 
-        FigureCanvas.__init__(self, fig)
-        self.setParent(parent)
+        pg.setConfigOption('background', 'w')
+        pg.setConfigOption('foreground', 'k')
+        super().__init__(name='Plot1', viewBox=CustomViewBox())
 
-        FigureCanvas.setSizePolicy(self,
-                                   QSizePolicy.Expanding,
-                                   QSizePolicy.Expanding)
-        FigureCanvas.updateGeometry(self)
+        for i in self.getViewBox().allChildren():
+            print(i.__dict__)
 
-        # self.mpl_toolbar = NavigationToolbar(self, self.parent)
+        self.addLegend()
+        self.setLogMode(x=True, y=True)
+
+        self.p1 = self.plot(name='Intrinsic')
+        self.p2 = self.plot(name='Shockley Read Hall')
+        self.p3 = self.plot(name='Surface')
+        self.p4 = self.plot(name='Effective')
+        self.p5 = self.plot(name='Measured', symbol='o')
+
+        self.setLabel('bottom', '&Delta;n', 'cm<sup>-3 </sup> ')
+
+        self.p1.setPen('r', width=3)
+        self.p2.setPen('g', width=3)
+        self.p3.setPen('b', width=3)
+        self.p4.setPen('k', width=3, style=pg.QtCore.Qt.DotLine)
+        self.p4.setPen('k', width=3, style=pg.QtCore.Qt.DotLine)
 
     def compute_initial_figure(self):
         pass
 
+    def update_rawdata(self, nxc, tau):
+        self.plot_data(self.p5, nxc,  1. / tau, False)
 
-class MyDynamicMplCanvas(MyMplCanvas):
-    """A canvas that updates itself every second with a new plot."""
+    def update_modelling(self, SRH_pars, sample_inf, surface_recom, plot_type):
+        # self.axes.cla()
 
-    # def __init__(self, parent=None):
-    #     QWidget.__init__(self, parent)
-    #     self.canvas = MplCanvas()  # create canvas that will hold our plot
-    #     # createa navigation toolbar for our plot canvas
-    #     self.navi_toolbar = NavigationToolbar(self.canvas, self)
-    #
-    #     self.vbl = QVBoxLayout()
-    #     self.vbl.addWidget(self.canvas)
-    #     self.vbl.addWidget(self.navi_toolbar)
-    #     self.setLayout(self.vbl)
+        srh = SRH_recombiation()
 
-    def compute_initial_figure(self):
-        self.axes.plot([0, 1, 2, 3], [1, 2, 0, 4], 'r')
+        for k in SRH_pars.keys():
+            if hasattr(srh, k):
+                setattr(srh, k, SRH_pars[k]['value'])
 
-    def update_figure(self, SRH_pars, sample_inf):
-
-        self.axes.cla()
-        srh = SRH_params()
-
-        srh.Et = SRH_pars['Et'][0]
-        srh.tau_e = SRH_pars[u"\U0001D70F<sub>e</sub>"][0]
-        srh.tau_h = SRH_pars[u"\U0001D70F<sub>h</sub>"][0]
+        surface_rec = surface_recombaition()
+        for k in surface_recom.keys():
+            if hasattr(surface_rec, k):
+                setattr(surface_rec, k, surface_recom[k]['value'])
 
         smp = sample()
-
-        smp.Na = sample_inf['Na'][0]
-        smp.Nd = sample_inf['Nd'][0]
-        smp.thickness = sample_inf['Thickness'][0]
-        smp.temp = sample_inf['Temperature'][0]
+        for k in sample_inf.keys():
+            if hasattr(smp, k):
+                setattr(smp, k, sample_inf[k]['value'])
 
         smp.SRH.append(srh)
-        print('this one is', smp.temp)
-        lt = lifetime(smp, None)
+        smp.surface = surface_rec
 
-        # self.fig.clear()
-        self.axes.plot(smp.nxc, 1. / lt.intrinsic())
-        self.axes.plot(smp.nxc, 1. / lt.extrinsic())
-        self.axes.set_yscale('log')
-        self.axes.set_xscale('log')
-        # self._fig.canvas.draw()
-        # self.show()
-        self.draw()
+        self.lt = lifetime(smp, None)
 
-    # def update_figure(self):
-    #     # Build a list of 4 random integers between 0 and 10 (both inclusive)
-    #     l = [np.random.randint(0, 10) for i in range(4)]
-    #     self.axes.cla()
-    #     self.axes.plot([0, 1, 2, 3], l, 'r')
-        # self.draw()
+        self.plot_data(self.p1, smp.nxc,  self.lt.intrinsic())
+        self.plot_data(self.p2, smp.nxc,  self.lt.extrinsic())
+        self.plot_data(self.p3, smp.nxc,  self.lt.J0())
+        self.plot_data(self.p4, smp.nxc,  self.lt.J0() +
+                       self.lt.extrinsic() + self.lt.intrinsic(), False)
+
+    def plot_data(self, plot_ref, nxc, itau, constitute=True):
+
+        if self.plot_type == 'lifetime':
+            y = 1. / itau
+
+        elif self.plot_type == 'Auger corrected lifetime':
+            if not constitute:
+                self.lt.sample.nxc = nxc
+                y = 1 / (itau - self.lt.intrinsic())
+            else:
+                y = 1. / itau
+
+        elif self.plot_type == 'inverse lifetime':
+            y = itau
+
+        elif self.plot_type == 'Inverse Auger corrected lifetime':
+            if not constitute:
+                self.lt.sample.nxc = nxc
+                y = (itau - self.lt.intrinsic())
+            else:
+                y = itau
+
+        else:
+            y = None
+
+        plot_ref.setData(
+            x=nxc, y=y)
 
 
 class extended_QLineEdit(QLineEdit):
-
-    # def __init__(self):
-        # print('yaaass')
 
     def wheelEvent(self, event):
 
@@ -200,28 +240,36 @@ class item():
 
 
 class fitting_values(QWidget):
-    sample = [('Na', [0, float]),
-              ('Nd', [1e16, float]),
-              ('Thickness', [0.018, float]),
-              ('Temperature', [300, float]),
-              ]
 
     SRH_no = [
         ('No of defects', [1, int]),
     ]
-    SRH_pars = [
-        ('Et', [0, float]),
-        (u"\U0001D70F" + '<sub>e</sub>', [1e-3, float]),
-        (u'\U0001D70F' + '<sub>h</sub>', [1e-3, float]),
-    ]
 
-    # figure = None
-    inputchange = pyqtSignal()
+    modelling_changed = pyqtSignal()
 
     def __init__(self, parent):
-        self.sample = collections.OrderedDict(self.sample)
+        # load the sample values
+        self.sample = collections.OrderedDict()
+        for k, v in sample().params().items():
+            self.sample[k] = {'value': v, '_type': float}
+            self.sample[k]['name'] = k
+
         self.SRH_no = collections.OrderedDict(self.SRH_no)
-        self.SRH_pars = collections.OrderedDict(self.SRH_pars)
+        # load the SRH parameters
+        self.SRH_pars = collections.OrderedDict()
+        for k, v in SRH_recombiation().params().items():
+            self.SRH_pars[k] = {'value': v, '_type': float}
+        # get the human readable names
+        for k, v in SRH_recombiation().hr_params().items():
+            self.SRH_pars[k]['name'] = v
+
+        # load the SRH parameters
+        self.surface_pars = collections.OrderedDict()
+        for k, v in surface_recombaition().params().items():
+            self.surface_pars[k] = {'value': v, '_type': float}
+
+        for k, v in surface_recombaition().hr_params().items():
+            self.surface_pars[k]['name'] = v
 
         super().__init__()
         self.parent = parent
@@ -236,13 +284,12 @@ class fitting_values(QWidget):
         for row, dic in zip(range(len(self.dics)), self.dics):
             col = 0
             for key, value in dic.items():
+                value['item'] = item(self.parent, **value)
+                value['item'].doit()
+                value['item'].connect(self.gui2dics)
 
-                value.append(item(self.parent, key, *value))
-                value[-1].doit()
-                value[-1].connect(self.gui2dics)
-
-                grid.addWidget(value[-1].Label,  row * 2, col)
-                grid.addWidget(value[-1].Object,  row * 2 + 1, col)
+                grid.addWidget(value['item'].Label,  row * 2, col)
+                grid.addWidget(value['item'].Object,  row * 2 + 1, col)
 
                 col += 1
 
@@ -257,36 +304,73 @@ class fitting_values(QWidget):
     def params(self):
 
         _params = collections.OrderedDict()
-        for i in [self.sample,   self.SRH_pars, ]:
+        for i in [self.sample,   self.SRH_pars, self.surface_pars]:
             _params.update(i)
 
         return _params
 
     @property
     def dics(self):
-        return [self.sample,  self.SRH_pars]
+        return [self.sample,  self.SRH_pars, self.surface_pars]
 
     def gui2dics(self):
 
         for dic in self.dics:
             for k, v in dict(dic).items():
-                dic[k][0] = v[-1].value
+                dic[k]['value'] = v['item'].value
 
         self.dics2gui()
-        # if self.figure is not None:
-        # print('about to go in')
-        # self.figure.update_figure(self.SRH_pars, self.sample)
 
     def dics2gui(self):
 
         for dic in self.dics:
             for k, v in dict(dic).items():
-                v[-1].value = v[0]
+                v['item'].value = v['value']
 
-        self.inputchange.emit()
+        self.modelling_changed.emit()
 
 
-class Widget_holder(QWidget):
+class RawData_widget(QWidget):
+    data = None
+    rawdata_changed = pyqtSignal()
+
+    def __init__(self, parent):
+            # super(LossAnalysisGui, self).__init__(parent)
+        super().__init__()
+        self.parent = parent
+
+        self.initUI()
+
+    def initUI(self):
+        grid = QGridLayout()
+
+        label = QLabel('No file selected')
+
+        button = QPushButton('Load your data')
+
+        grid.addWidget(button, 0, 0)
+        grid.addWidget(label, 0, 1)
+
+        button.clicked.connect(self.loadfile)
+        self.setLayout(grid)
+
+    def loadfile(self):
+        exts = ''
+        for k, v in loader.loadersandext.items():
+            exts += '{0} ({1});;'.format(k, v)
+
+        exts.strip(';;')
+
+        fname, ext = QFileDialog.getOpenFileName(self, 'Open file', "", exts)
+
+        if fname is not None:
+            for k in loader.loadersandext.keys():
+                if k in ext:
+                    self.data = loader.loaders[k](fname)
+                    self.rawdata_changed.emit()
+
+
+class Widget_holder(QTabWidget):
 
     def __init__(self, parent):
         # super(LossAnalysisGui, self).__init__(parent)
@@ -297,28 +381,56 @@ class Widget_holder(QWidget):
 
     def initUI(self):
 
-        grid = QGridLayout()
-        self.fv = fitting_values(self.parent)
+        grid = QGridLayout(self)
+        grid2 = QGridLayout()
+        tabs = QTabWidget()
 
+        self.fv = fitting_values(self)
+        self.rd = RawData_widget(self)
+
+        tabs.addTab(self.fv, "modelling")
+        tabs.addTab(self.rd, "measured data")
+        # self.addTab(self.tab2, "raw_data")
         # cont = start_the_measurement(self.parent)
-        self.dc = MyDynamicMplCanvas(self.parent, width=5, height=4, dpi=100)
-        # la = LoadFiles(self.parent)
-        # print(fv.SRH_pars.values(), fv.sample)
-        self.fv.inputchange.connect(self.update_figure)
+        grid.addWidget(tabs, 0, 0)
 
-        grid.addWidget(self.fv, 0, 0)
-        # grid.addWidget(cont, 1, 0)
+        self.fv.modelling_changed.connect(self.update_modelling)
+        self.rd.rawdata_changed.connect(self.update_rawdata)
+
+        self.dc = plotwidget(self.parent)
+
+        self.lb = QLabel('Plot type')
+        self.cb = QComboBox()
+        self.cb.addItems(["lifetime", "inverse lifetime",
+                          "murphy", 'Auger corrected lifetime', 'Inverse Auger corrected lifetime'])
+
+        grid2.addWidget(self.lb, 0, 0)
+        grid2.addWidget(self.cb, 0, 1)
+
+        # self.setLayout(grid2)
         grid.addWidget(self.dc, 0, 1)
+        grid.addLayout(grid2, 1, 1)
 
+        self.cb.currentIndexChanged.connect(self.plot_type_change)
         # lo.hide_panel.connect(la.check_visability)
         # la.hide_panel.connect(lo._show)
 
+        self.fv.modelling_changed.emit()
         self.setLayout(grid)
         self.show()
 
-    def update_figure(self):
-        self.dc.update_figure(self.fv.SRH_pars, self.fv.sample)
+    def plot_type_change(self, i):
+        self.dc.plot_type = self.cb.itemText(i)
+        self.update_rawdata()
+        self.update_modelling()
 
+    def update_modelling(self):
+        self.dc.update_modelling(self.fv.SRH_pars, self.fv.sample,
+                                 self.fv.surface_pars, 'regular')
+
+    def update_rawdata(self):
+        if self.rd.data is not None:
+            self.dc.update_rawdata(self.rd.data['nxc'], self.rd.data['tau'])
         # q hack so the window size doesn't change
         # la.hide()
         # lo._show()
@@ -348,7 +460,8 @@ class App(QMainWindow):
 
         self.show()
 
-if __name__ == '__main__':
+
+def main():
 
     # logfile = open('traceback_log.txt', 'w')
     app = QApplication(sys.argv)

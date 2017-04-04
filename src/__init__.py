@@ -1,4 +1,2 @@
 
-from . import utility
-from . import hardware
-from . import data
+from . import gui.gui as gui
